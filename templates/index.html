@@ -2,57 +2,29 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculadora de Rutas - Dijkstra Oaxaca</title>
+    <title>Seleccionar Ruta</title>
     <style>
-        body { font-family: sans-serif; background-color: #f4f4f4; color: #333; max-width: 800px; margin: 20px auto; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        h1, h2 { text-align: center; color: #0056b3; }
-        form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 20px; }
-        .input-group { display: flex; flex-direction: column; }
-        label { margin-bottom: 5px; font-weight: bold; }
-        input[type="text"] { padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { grid-column: 1 / -1; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
-        button:hover { background-color: #0056b3; }
-        #resultado { text-align: center; }
-        #resultado img { max-width: 100%; border: 1px solid #ddd; border-radius: 8px; margin-top: 20px; }
-        .error { color: #d9534f; font-weight: bold; }
+        body { font-family: sans-serif; margin: 0; padding: 0; }
+        #map { height: 100vh; }
+        .info-box { position: absolute; top: 10px; left: 50px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
     </style>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css"/>
 </head>
 <body>
-    <h1>Calculadora de Rutas Óptimas</h1>
+    <div class="info-box">
+        <h3 id="instruction">1. Haz clic en el mapa para seleccionar el PUNTO DE ORIGEN</h3>
+    </div>
     
-    <form method="POST">
-        <div class="input-group">
-            <label for="origen_lat">Latitud Origen</label>
-            <input type="text" id="origen_lat" name="origen_lat" value="17.0654" required>
-        </div>
-        <div class="input-group">
-            <label for="origen_lon">Longitud Origen</label>
-            <input type="text" id="origen_lon" name="origen_lon" value="-96.7218" required>
-        </div>
-        <div class="input-group">
-            <label for="destino_lat">Latitud Destino</label>
-            <input type="text" id="destino_lat" name="destino_lat" value="16.9992" required>
-        </div>
-        <div class="input-group">
-            <label for="destino_lon">Longitud Destino</label>
-            <input type="text" id="destino_lon" name="destino_lon" value="-96.7266" required>
-        </div>
-        <button type="submit">Calcular Ruta</button>
+    {{ mapa_html|safe }}
+
+    <form id="coordForm" action="/ruta" method="POST" style="display:none;">
+        <input type="text" id="origen_lat" name="origen_lat">
+        <input type="text" id="origen_lon" name="origen_lon">
+        <input type="text" id="destino_lat" name="destino_lat">
+        <input type="text" id="destino_lon" name="destino_lon">
     </form>
 
-    {% if resultado %}
-    <div id="resultado">
-        <h2>Resultado de la Búsqueda</h2>
-        {% if resultado.error %}
-            <p class="error">{{ resultado.error }}</p>
-        {% else %}
-            <p><strong>Distancia total:</strong> {{ resultado.distancia }} km</p>
-            <p><strong>Tiempo estimado de viaje:</strong> {{ resultado.tiempo }} minutos</p>
-            <img src="{{ url_for('static', filename=resultado.mapa_url) }}" alt="Mapa de la ruta óptima">
-        {% endif %}
-    </div>
-    {% endif %}
-
+    
+    
 </body>
 </html>
