@@ -52,21 +52,21 @@ def dijkstra_personalizado(graph, start_node, end_node):
     # El bucle se ejecuta mientras queden nodos por visitar.
     while nodos_no_visitados:
         # Encuentra el nodo no visitado con la distancia más corta acumulada.
-        distancia_minima = math.inf
+        dis_min = math.inf
         nodo_actual = None
         for nodo in nodos_no_visitados:
-            if distancias[nodo] < distancia_minima:
-                distancia_minima = distancias[nodo]
+            if distancias[nodo] < dis_min:
+                dis_min = distancias[nodo]
                 nodo_actual = nodo
         
         # Si hemos llegado al nodo final, la ruta está encontrada.
         if nodo_actual == end_node:
             ruta = []
-            nodo_temporal = end_node
+            temp_nodo = end_node
             # Reconstruimos la ruta hacia atrás, desde el final hasta el principio.
-            while nodo_temporal is not None:
-                ruta.append(nodo_temporal)
-                nodo_temporal = nodos_anteriores[nodo_temporal]
+            while temp_nodo is not None:
+                ruta.append(temp_nodo)
+                temp_nodo = nodos_anteriores[temp_nodo]
             return ruta[::-1], distancias[end_node] # Devolvemos la ruta en orden y el costo final.
 
         # Si el nodo más cercano es inalcanzable, no hay más caminos posibles.
@@ -81,7 +81,7 @@ def dijkstra_personalizado(graph, start_node, end_node):
             # Calculamos la nueva distancia posible pasando por el nodo actual.
             nueva_distancia = distancias[nodo_actual] + peso
             
-            # Si este nuevo camino es más corto que el que ya conocíamos, lo actualizamos.
+            # Se actualiza si este nuevo camino es más corto que el que ya conocíamos.
             if nueva_distancia < distancias[vecino]:
                 distancias[vecino] = nueva_distancia
                 nodos_anteriores[vecino] = nodo_actual
@@ -91,6 +91,23 @@ def dijkstra_personalizado(graph, start_node, end_node):
             
     # Si el bucle termina sin haber llegado al 'end_node', no existe una ruta.
     return None, math.inf
+
+def obtener_direccion_giro(prev_bearing, next_bearing):
+    """
+    Calcula la dirección del giro (izquierda, derecha, etc.) basándose en dos ángulos.
+    """
+    # Calcula la diferencia de ángulo y la normaliza entre -180 y 180
+    diff = next_bearing - prev_bearing
+    angle = (diff + 180) % 360 - 180
+
+    if -25 <= angle <= 25:
+        return "Sigue derecho"
+    elif angle > 25:
+        return "Gira a la derecha"
+    elif angle < -25:
+        return "Gira a la izquierda"
+    # Podríamos añadir más casos como "vuelta en U" si quisiéramos
+    return "Continúa"
 
 # ==============================================================================
 # 3. CONFIGURACIÓN DE LA APLICACIÓN FLASK Y CARGA DE DATOS
@@ -217,54 +234,60 @@ def index():
     
     return render_template('index.html', mapa_html=mapa_html)
 
-# --- Ruta 2: API para el cálculo ('/ruta') ---
+# --- RUTA 2: API PARA CALCULAR LA RUTA (CORREGIDA) ---
 @app.route('/ruta', methods=['POST'])
 def calcular_ruta_api():
-    """
-    Endpoint de la API que calcula la ruta y devuelve los resultados como JSON.
-    """
     try:
-        # 4.1. Recibe y procesa los datos enviados por el usuario.
         data = request.get_json()
         origen_lat = float(data['origen_lat'])
         origen_lon = float(data['origen_lon'])
         destino_lat = float(data['destino_lat'])
         destino_lon = float(data['destino_lon'])
 
-        # Encuentra los nodos del grafo más cercanos a las coordenadas dadas.
         origen_nodo = ox.nearest_nodes(G, Y=origen_lat, X=origen_lon)
         destino_nodo = ox.nearest_nodes(G, Y=destino_lat, X=destino_lon)
 
-        # 4.2. Ejecuta el algoritmo de Dijkstra.
         ruta_optima_nodos, tiempo_total_seg = dijkstra_personalizado(G, origen_nodo, destino_nodo)
 
         if ruta_optima_nodos is None:
             return jsonify({"success": False, "error": "No se pudo encontrar una ruta entre los puntos seleccionados."})
 
-        # 4.3. Procesa los resultados.
         tiempo_total_min = tiempo_total_seg / 60
         distancia_total_km = sum(G.edges[u, v, 0]['length'] for u, v in zip(ruta_optima_nodos[:-1], ruta_optima_nodos[1:])) / 1000
 
-        # Recopila los datos para la tabla de desglose de la ruta.
+        # --- LÍNEA CORREGIDA AQUÍ ---
+        bearings = ox.bearing.add_edge_bearings(G.subgraph(ruta_optima_nodos))
+        
         segmentos = []
         for i in range(len(ruta_optima_nodos) - 1):
             u = ruta_optima_nodos[i]
             v = ruta_optima_nodos[i+1]
+            
             edge_data = G.edges[u, v, 0]
+            
             nombre_calle = edge_data.get('name', 'Calle sin nombre')
             if isinstance(nombre_calle, list):
                 nombre_calle = nombre_calle[0]
+            
             distancia_m = edge_data.get('length', 0)
             tiempo_seg = edge_data.get('tiempo_viaje_seg', 0)
             velocidad_kmh = (distancia_m / tiempo_seg) * 3.6 if tiempo_seg > 0 else 0
+            
+            direccion = "Inicia el recorrido"
+            if i > 0:
+                nodo_previo = ruta_optima_nodos[i-1]
+                bearing_anterior = bearings.edges[nodo_previo, u, 0]['bearing']
+                bearing_actual = bearings.edges[u, v, 0]['bearing']
+                direccion = obtener_direccion_giro(bearing_anterior, bearing_actual)
+
             segmentos.append({
+                "direccion": direccion,
                 "calle": nombre_calle,
                 "distancia": f"{distancia_m:.0f} m",
                 "velocidad": f"{velocidad_kmh:.1f} km/h",
                 "tiempo": f"{tiempo_seg:.1f} s"
             })
         
-        # 4.4. Genera la imagen del mapa resultante.
         fig, ax = ox.plot_graph_route(
             G, 
             ruta_optima_nodos,
@@ -277,28 +300,21 @@ def calcular_ruta_api():
             show=False,
             close=False
         )
-        
-        # Dibuja los marcadores de inicio y fin.
         origen_coords = (G.nodes[origen_nodo]['y'], G.nodes[origen_nodo]['x'])
         destino_coords = (G.nodes[destino_nodo]['y'], G.nodes[destino_nodo]['x'])
         ax.scatter(origen_coords[1], origen_coords[0], s=200, c='lime', marker='o', zorder=5, label='Origen')
         ax.scatter(destino_coords[1], destino_coords[0], s=200, c='red', marker='X', zorder=5, label='Destino')
-
-        # Aplica el zoom manual al área de la ruta.
         x = [G.nodes[n]['x'] for n in ruta_optima_nodos]
         y = [G.nodes[n]['y'] for n in ruta_optima_nodos]
         margen = 0.008
         ax.set_xlim(min(x) - margen, max(x) + margen)
         ax.set_ylim(min(y) - margen, max(y) + margen)
-        
-        # Guarda la figura como un archivo de imagen.
         timestamp = int(time.time())
         nombre_mapa = f'mapa_ruta_{timestamp}.png'
         ruta_guardado = f'static/{nombre_mapa}'
         fig.savefig(ruta_guardado, dpi=300, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
 
-        # 4.5. Devuelve todos los datos al front-end en formato JSON.
         return jsonify({
             "success": True,
             "distancia": f"{distancia_total_km:.2f}",
