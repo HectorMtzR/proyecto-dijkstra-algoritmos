@@ -7,6 +7,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import time
+from dijkstra_custom import dijkstra_personalizado
 
 app = Flask(__name__)
 
@@ -24,7 +25,7 @@ G = ox.graph_from_place(places, network_type='drive', simplify=True)
 # Pre-calcular los pesos...
 # (El resto del código de carga y cálculo de pesos se mantiene exactamente igual)
 print("Calculando pesos de tiempo de viaje...")
-VELOCIDAD_ESTANDAR_KMH = 20
+VELOCIDAD_ESTANDAR_KMH = 15
 KMH_A_MS = 1000 / 3600
 for u, v, data in G.edges(data=True):
     longitud_m = data.get('length', 0)
@@ -126,7 +127,7 @@ def index():
     
     return render_template('index.html', mapa_html=mapa_html)
 
-# --- RUTA 2: API PARA CALCULAR LA RUTA (MODIFICADA) ---
+# --- RUTA 2: API PARA CALCULAR LA RUTA (CON ZOOM MANUAL) ---
 @app.route('/ruta', methods=['POST'])
 def calcular_ruta_api():
     try:
@@ -139,12 +140,59 @@ def calcular_ruta_api():
         origen_nodo = ox.nearest_nodes(G, Y=origen_lat, X=origen_lon)
         destino_nodo = ox.nearest_nodes(G, Y=destino_lat, X=destino_lon)
 
-        ruta_optima_nodos = nx.shortest_path(G, source=origen_nodo, target=destino_nodo, weight='tiempo_viaje_seg')
-        
-        tiempo_total_min = nx.shortest_path_length(G, source=origen_nodo, target=destino_nodo, weight='tiempo_viaje_seg') / 60
+        ruta_optima_nodos, tiempo_total_seg = dijkstra_personalizado(G, origen_nodo, destino_nodo)
+
+        if ruta_optima_nodos is None:
+            return jsonify({"success": False, "error": "No se pudo encontrar una ruta entre los puntos seleccionados."})
+
+        tiempo_total_min = tiempo_total_seg / 60
         distancia_total_km = sum(G.edges[u, v, 0]['length'] for u, v in zip(ruta_optima_nodos[:-1], ruta_optima_nodos[1:])) / 1000
 
-        fig, ax = ox.plot_graph_route(G, ruta_optima_nodos, route_color='lime', route_linewidth=2, node_size=0, bgcolor='#0B161D', edge_color='w', edge_linewidth=0.15)
+        segmentos = []
+        for i in range(len(ruta_optima_nodos) - 1):
+            u = ruta_optima_nodos[i]
+            v = ruta_optima_nodos[i+1]
+            edge_data = G.edges[u, v, 0]
+            nombre_calle = edge_data.get('name', 'Calle sin nombre')
+            if isinstance(nombre_calle, list):
+                nombre_calle = nombre_calle[0]
+            distancia_m = edge_data.get('length', 0)
+            tiempo_seg = edge_data.get('tiempo_viaje_seg', 0)
+            velocidad_kmh = (distancia_m / tiempo_seg) * 3.6 if tiempo_seg > 0 else 0
+            segmentos.append({
+                "calle": nombre_calle,
+                "distancia": f"{distancia_m:.0f} m",
+                "velocidad": f"{velocidad_kmh:.1f} km/h",
+                "tiempo": f"{tiempo_seg:.1f} s"
+            })
+
+        # --- INICIO DE LA IMPLEMENTACIÓN DEL ZOOM MANUAL ---
+        
+        # 1. Dibujamos el mapa pero sin mostrarlo todavía
+        fig, ax = ox.plot_graph_route(
+            G, 
+            ruta_optima_nodos,
+            route_color='lime', 
+            route_linewidth=6, 
+            node_size=0, 
+            bgcolor='#0B161D', 
+            edge_color='gray', 
+            edge_linewidth=0.5,
+            show=False,       # <-- Añadido
+            close=False       # <-- Añadido
+        )
+
+        # 2. Extraemos las coordenadas X e Y de la ruta
+        x = [G.nodes[n]['x'] for n in ruta_optima_nodos]
+        y = [G.nodes[n]['y'] for n in ruta_optima_nodos]
+        
+        # 3. Definimos un margen y ajustamos los límites del gráfico
+        margen = 0.008  # Puedes ajustar este valor si quieres más o menos espacio
+        ax.set_xlim(min(x) - margen, max(x) + margen)
+        ax.set_ylim(min(y) - margen, max(y) + margen)
+        
+        # --- FIN DE LA IMPLEMENTACIÓN DEL ZOOM MANUAL ---
+
         timestamp = int(time.time())
         nombre_mapa = f'mapa_ruta_{timestamp}.png'
         ruta_guardado = f'static/{nombre_mapa}'
@@ -155,13 +203,13 @@ def calcular_ruta_api():
             "success": True,
             "distancia": f"{distancia_total_km:.2f}",
             "tiempo": f"{tiempo_total_min:.2f}",
-            "mapa_url": f"/static/{nombre_mapa}"
+            "mapa_url": f"/static/{nombre_mapa}",
+            "segmentos": segmentos
         })
 
-    except nx.NetworkXNoPath:
-        return jsonify({"success": False, "error": "No se pudo encontrar una ruta entre los puntos seleccionados."})
     except Exception as e:
-        return jsonify({"success": False, "error": f"Ocurrió un error: {e}"})
+        print(f"Error en el servidor: {e}")
+        return jsonify({"success": False, "error": f"Ocurrió un error inesperado en el servidor."})
 
 if __name__ == '__main__':
     app.run(debug=True)

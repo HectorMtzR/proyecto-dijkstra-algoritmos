@@ -2,159 +2,195 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Calculadora de Rutas V.2</title>
+    <title>Proyecto Dijkstra HMR</title>
     <style>
-        :root { --main-bg-color: #f0f2f5; --panel-bg-color: #ffffff; --primary-color: #007bff; --border-color: #dee2e6; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; margin: 0; background-color: var(--main-bg-color); }
-        .container { display: flex; height: 100vh; }
-        .map-container { flex-grow: 1; }
-        .map-container iframe { width: 100%; height: 100%; border: none; }
-        .panel { width: 380px; flex-shrink: 0; background-color: var(--panel-bg-color); box-shadow: -2px 0 5px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
-        .panel-header { padding: 20px; border-bottom: 1px solid var(--border-color); }
-        .panel-header h1 { margin: 0; font-size: 24px; }
-        .panel-content { padding: 20px; overflow-y: auto; }
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; }
-        .coord-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .form-group input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box; }
-        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
-        button { padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        :root { --main-bg-color: #f0f2f5; --panel-bg-color: #ffffff; --primary-color: #007bff; --border-color: #dee2e6; --header-bg-color: #f8f9fa; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            background-color: var(--main-bg-color);
+        }
+        .main-container {
+            max-width: 900px;
+            margin: 20px auto;
+            padding: 20px 30px;
+            background-color: var(--panel-bg-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        section {
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 25px;
+            margin-bottom: 25px;
+        }
+        section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        h1, h2, h3 { color: #333; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; }
+        .coord-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .form-group input { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box; }
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px; }
+        button { padding: 12px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 600; }
         #calculate-btn { background-color: var(--primary-color); color: white; }
         #calculate-btn:disabled { background-color: #a0cffa; cursor: not-allowed; }
         #reset-btn { background-color: #6c757d; color: white; }
-        #results { margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 20px; }
-        #results h2 { margin-top: 0; }
-        #results p { margin: 5px 0; font-size: 16px; }
-        #results img { width: 100%; border-radius: 4px; margin-top: 10px; }
+        #map-container { height: 60vh; min-height: 400px; border-radius: 8px; border: 1px solid var(--border-color); overflow: hidden; }
+        #map-container iframe { width: 100%; height: 100%; border: none; }
+        #results { display: none; }
+        #results img { width: 100%; border-radius: 4px; margin-top: 15px; }
+        .table-container { margin-top: 20px; max-height: 300px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 4px; }
+        #segmentos-table { width: 100%; border-collapse: collapse; }
+        #segmentos-table th { 
+            position: sticky; top: 0; /* Para que los encabezados se queden fijos al hacer scroll */
+            text-align: left; padding: 10px; border-bottom: 2px solid var(--primary-color);
+            background-color: var(--header-bg-color);
+            font-size: 14px;
+        }
+        #segmentos-table td { padding: 10px; border-bottom: 1px solid #eee; }
+        #segmentos-table tbody tr:nth-child(even) { background-color: #f8f9fa; /* Color para filas pares */ }
         .spinner { display: none; margin: 20px auto; width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary-color); border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="map-container">
-            {{ mapa_html|safe }}
+    <div class="main-container">
+        <header>
+            <h1>Calculadora de Rutas Inteligentes</h1>
+        </header>
+
+        <section id="input-section">
+            <h2>1. Selecciona tu Ruta</h2>
+            <p id="instruction">Haz clic en el mapa para seleccionar el origen o ingresa las coordenadas manualmente.</p>
+            
+            <div class="form-group">
+                <label>Punto de Origen</label>
+                <div class="coord-grid">
+                    <input type="text" id="origen_lat" placeholder="Latitud">
+                    <input type="text" id="origen_lon" placeholder="Longitud">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Punto de Destino</label>
+                <div class="coord-grid">
+                    <input type="text" id="destino_lat" placeholder="Latitud">
+                    <input type="text" id="destino_lon" placeholder="Longitud">
+                </div>
+            </div>
+            <div class="button-group">
+                <button id="reset-btn">Limpiar</button>
+                <button id="calculate-btn" disabled>Calcular Ruta</button>
+            </div>
+        </section>
+
+        <section id="map-selection-section">
+            <div id="map-container">
+                {{ mapa_html|safe }}
+            </div>
+        </section>
+
+        <div id="results">
+            <section id="results-section">
+                <h2>2. Resultado de la Ruta</h2>
+                <p id="result-text"></p>
+                
+                <h3>Desglose de la Ruta</h3>
+                <div class="table-container">
+                    <table id="segmentos-table">
+                        <thead>
+                            <tr>
+                                <th>Calle</th>
+                                <th style="text-align: right;">Distancia</th>
+                                <th style="text-align: right;">Velocidad</th>
+                                <th style="text-align: right;">Tiempo</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <h3 style="margin-top: 20px;">Visualización del Mapa</h3>
+                <img id="result-map" src="" alt="Mapa de la ruta">
+            </section>
         </div>
 
-        <div class="panel">
-            <div class="panel-header">
-                <h1>Calculadora de Rutas</h1>
-            </div>
-            <div class="panel-content">
-                <p id="instruction">Haz clic en el mapa para seleccionar el origen.</p>
-                <div class="form-group">
-                    <label>Punto de Origen</label>
-                    <div class="coord-grid">
-                        <input type="text" id="origen_lat" placeholder="Latitud">
-                        <input type="text" id="origen_lon" placeholder="Longitud">
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label>Punto de Destino</label>
-                    <div class="coord-grid">
-                        <input type="text" id="destino_lat" placeholder="Latitud">
-                        <input type="text" id="destino_lon" placeholder="Longitud">
-                    </div>
-                </div>
-                <div class="button-group">
-                    <button id="reset-btn">Limpiar</button>
-                    <button id="calculate-btn" disabled>Calcular Ruta</button>
-                </div>
-
-                <div id="results" style="display:none;">
-                    <h2>Resultado</h2>
-                    <p id="result-text"></p>
-                    <img id="result-map" src="" alt="Mapa de la ruta">
-                </div>
-                <div class="spinner" id="loading-spinner"></div>
-            </div>
-        </div>
+        <div class="spinner" id="loading-spinner"></div>
     </div>
 
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-    const calcBtn = document.getElementById('calculate-btn');
-    const resetBtn = document.getElementById('reset-btn');
-    const resultsDiv = document.getElementById('results');
-    const resultText = document.getElementById('result-text');
-    const resultMap = document.getElementById('result-map');
-    const spinner = document.getElementById('loading-spinner');
-    const instruction = document.getElementById('instruction');
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const calcBtn = document.getElementById('calculate-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const resultsDiv = document.getElementById('results');
+        const resultText = document.getElementById('result-text');
+        const resultMap = document.getElementById('result-map');
+        const spinner = document.getElementById('loading-spinner');
+        const instruction = document.getElementById('instruction');
 
-    // --- LÓGICA DEL BOTÓN DE CÁLCULO ---
-    calcBtn.addEventListener('click', async () => {
-        // Obtener coordenadas de los campos
-        const data = {
-            origen_lat: document.getElementById('origen_lat').value,
-            origen_lon: document.getElementById('origen_lon').value,
-            destino_lat: document.getElementById('destino_lat').value,
-            destino_lon: document.getElementById('destino_lon').value,
-        };
-
-        // Validar que no estén vacíos
-        if (!data.origen_lat || !data.origen_lon || !data.destino_lat || !data.destino_lon) {
-            alert("Por favor, selecciona dos puntos o ingresa las coordenadas.");
-            return;
-        }
-
-        // Mostrar spinner y ocultar resultados anteriores
-        spinner.style.display = 'block';
-        resultsDiv.style.display = 'none';
-        instruction.innerText = "Calculando la ruta óptima...";
-
-        try {
-            // Enviar datos al back-end (API)
-            const response = await fetch('/ruta', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-            const result = await response.json();
-
-            // Mostrar resultados en la página
-            if (result.success) {
-                resultText.innerHTML = `<strong>Distancia:</strong> ${result.distancia} km<br><strong>Tiempo:</strong> ${result.tiempo} minutos`;
-                resultMap.src = result.mapa_url;
-                resultsDiv.style.display = 'block';
-            } else {
-                resultText.innerHTML = `<span style="color:red;">Error: ${result.error}</span>`;
+        calcBtn.addEventListener('click', async () => {
+            const data = {
+                origen_lat: document.getElementById('origen_lat').value,
+                origen_lon: document.getElementById('origen_lon').value,
+                destino_lat: document.getElementById('destino_lat').value,
+                destino_lon: document.getElementById('destino_lon').value,
+            };
+            if (!data.origen_lat || !data.origen_lon || !data.destino_lat || !data.destino_lon) {
+                alert("Por favor, selecciona dos puntos o ingresa las coordenadas.");
+                return;
+            }
+            spinner.style.display = 'block';
+            resultsDiv.style.display = 'none';
+            instruction.innerText = "Calculando la ruta óptima...";
+            try {
+                const response = await fetch('/ruta', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    resultText.innerHTML = `<strong>Distancia:</strong> ${result.distancia} km<br><strong>Tiempo:</strong> ${result.tiempo} minutos`;
+                    resultMap.src = result.mapa_url;
+                    resultsDiv.style.display = 'block';
+                    const tablaBody = document.querySelector("#segmentos-table tbody");
+                    tablaBody.innerHTML = "";
+                    result.segmentos.forEach(segmento => {
+                        const fila = `<tr>
+                                        <td>${segmento.calle}</td>
+                                        <td style="text-align: right;">${segmento.distancia}</td>
+                                        <td style="text-align: right;">${segmento.velocidad}</td>
+                                        <td style="text-align: right;">${segmento.tiempo}</td>
+                                     </tr>`;
+                        tablaBody.innerHTML += fila;
+                    });
+                } else {
+                    resultText.innerHTML = `<span style="color:red;">Error: ${result.error}</span>`;
+                    resultsDiv.style.display = 'block';
+                    resultMap.src = "";
+                }
+            } catch (error) {
+                resultText.innerHTML = `<span style="color:red;">Error de conexión con el servidor.</span>`;
                 resultsDiv.style.display = 'block';
                 resultMap.src = "";
+            } finally {
+                spinner.style.display = 'none';
+                instruction.innerText = "¡Ruta calculada! Limpia para empezar de nuevo.";
             }
-        } catch (error) {
-            resultText.innerHTML = `<span style="color:red;">Error de conexión con el servidor.</span>`;
-            resultsDiv.style.display = 'block';
-            resultMap.src = "";
-        } finally {
-            // Ocultar spinner y restaurar instrucción
-            spinner.style.display = 'none';
-            instruction.innerText = "¡Ruta calculada! Limpia para empezar de nuevo.";
-        }
+        });
+        resetBtn.addEventListener('click', () => {
+            document.getElementById('origen_lat').value = '';
+            document.getElementById('origen_lon').value = '';
+            document.getElementById('destino_lat').value = '';
+            document.getElementById('destino_lon').value = '';
+            calcBtn.disabled = true;
+            resultsDiv.style.display = 'none';
+            resultMap.src = '';
+            instruction.innerText = "Haz clic en el mapa para seleccionar el origen.";
+            const resetEvent = new CustomEvent('resetMap');
+            document.dispatchEvent(resetEvent);
+        });
     });
-
-    // --- LÓGICA DEL BOTÓN DE LIMPIAR ---
-    resetBtn.addEventListener('click', () => {
-        // Limpiar campos del formulario
-        document.getElementById('origen_lat').value = '';
-        document.getElementById('origen_lon').value = '';
-        document.getElementById('destino_lat').value = '';
-        document.getElementById('destino_lon').value = '';
-        
-        // Deshabilitar botón de calcular
-        calcBtn.disabled = true;
-
-        // Ocultar resultados
-        resultsDiv.style.display = 'none';
-        resultMap.src = '';
-
-        // Resetear instrucción
-        instruction.innerText = "Haz clic en el mapa para seleccionar el origen.";
-
-        // Enviar evento al mapa en el iframe para que se limpie
-        const resetEvent = new CustomEvent('resetMap');
-        document.dispatchEvent(resetEvent);
-    });
-});
-</script>
+    </script>
 </body>
 </html>
